@@ -36,6 +36,16 @@ class ReleaseContractTests(unittest.TestCase):
             self.assertIn(required_text, workflow)
         self.assertNotIn("gh release view", workflow)
 
+    def test_application_icon_is_valid_and_bundled_in_both_executables(self):
+        png = (PROJECT_ROOT / "assets" / "app-icon.png").read_bytes()
+        ico = (PROJECT_ROOT / "assets" / "app-icon.ico").read_bytes()
+        self.assertTrue(png.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertTrue(ico.startswith(b"\x00\x00\x01\x00"))
+        for spec_name in ("MercadoPagoColppy.spec", "MercadoPagoColppyLauncher.spec"):
+            spec = (PROJECT_ROOT / spec_name).read_text(encoding="utf-8")
+            self.assertIn('("assets/app-icon.png", "assets")', spec)
+            self.assertIn('icon=["assets/app-icon.ico"]', spec)
+
     def test_packaging_script_uses_an_explicit_release_allowlist(self):
         script = (PROJECT_ROOT / "scripts" / "package_portable.ps1").read_text(encoding="utf-8")
         for filename in (

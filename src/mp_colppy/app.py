@@ -1,20 +1,23 @@
 from __future__ import annotations
 
-from datetime import date
+from dataclasses import replace
 from decimal import Decimal
 import os
 from pathlib import Path
 import subprocess
 import sys
 import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
 from typing import Callable
 
 from .companies import Company, CompanyConfig, CompanyConfigRepository
-from .excel_io import export_colppy_csv, export_colppy_xls, export_colppy_xlsx
+from .domain import ParseIssue
+from .excel_io import export_colppy_csv
 from .history import HistoryRepository
 from .paths import AppPaths, resolve_app_paths
+from .report_validation import classify_period, detect_company_from_paths, output_filename
 from .service import AnalysisResult, ImportService
 
 
@@ -26,9 +29,31 @@ def format_currency(value: Decimal) -> str:
     return f"{'-' if negative else ''}$ {localized}"
 
 
-def suggested_filename(mode: str, start: date, end: date, extension: str) -> str:
-    suffix = extension if extension.startswith(".") else f".{extension}"
-    return f"Colppy_MP_{mode}_{start.isoformat()}_a_{end.isoformat()}{suffix}"
+def adaptive_window_geometry(screen_width: int, screen_height: int) -> str:
+    width = min(1160, max(720, screen_width - 80))
+    height = min(720, max(600, screen_height - 110))
+    x = max(0, (screen_width - width) // 2)
+    y = max(0, (screen_height - height) // 2)
+    return f"{width}x{height}+{x}+{y}"
+
+
+def runtime_asset_path(filename: str) -> Path:
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root is not None:
+        return Path(bundle_root) / "assets" / filename
+    return Path(__file__).resolve().parents[2] / "assets" / filename
+
+
+def apply_window_icon(root: tk.Tk) -> None:
+    icon_path = runtime_asset_path("app-icon.png")
+    if not icon_path.is_file():
+        return
+    try:
+        icon = tk.PhotoImage(file=str(icon_path))
+        root.iconphoto(True, icon)
+        setattr(root, "_app_icon", icon)
+    except tk.TclError:
+        return
 
 
 def company_names(config: CompanyConfig) -> tuple[str, ...]:
@@ -52,46 +77,75 @@ def require_selected_company(config: CompanyConfig) -> Company:
 class StartupSplash:
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("Iniciando Mercado Pago a Colppy")
-        root.geometry("560x300")
-        root.configure(bg="#17365D")
-        self.frame = tk.Frame(root, bg="#17365D")
-        self.frame.place(relx=0, rely=0, relwidth=1, relheight=1)
-        tk.Label(
-            self.frame,
-            text="Mercado Pago a Colppy",
-            bg="#17365D",
-            fg="#FFFFFF",
-            font=("Segoe UI", 21, "bold"),
-        ).pack(pady=(70, 8))
-        tk.Label(
-            self.frame,
-            text="Preparando la aplicación",
-            bg="#17365D",
-            fg="#DCE8F2",
-            font=("Segoe UI", 10),
-        ).pack()
-        self.value = tk.DoubleVar(value=0)
-        self.message = tk.StringVar(value="Iniciando...")
-        ttk.Progressbar(self.frame, variable=self.value, maximum=100, length=410).pack(pady=(32, 10))
-        tk.Label(
-            self.frame,
-            textvariable=self.message,
-            bg="#17365D",
-            fg="#FFFFFF",
-            font=("Segoe UI", 9),
-        ).pack()
-        self.frame.lift()
-        root.update_idletasks()
+        self.started_at = time.monotonic()
+        self.animation_frame = 0
+        self.animation_job: str | None = None
+        setattr(root, "_startup_splash_active", True)
+        root.withdraw()
+        root.overrideredirect(True)
+        width, height = 540, 330
+        x = max(0, (root.winfo_screenwidth() - width) // 2)
+        y = max(0, (root.winfo_screenheight() - height) // 2)
+        root.geometry(f"{width}x{height}+{x}+{y}")
+        root.configure(bg="#102A49")
+
+        self.canvas = tk.Canvas(root, width=width, height=height, bg="#102A49", highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.create_rectangle(0, 0, width, 7, fill="#3B82C4", outline="")
+        self.canvas.create_oval(220, 40, 320, 140, fill="#EAF4FC", outline="#6FB1E2", width=2)
+        self.canvas.create_text(250, 90, text="MP", fill="#17365D", font=("Segoe UI", 15, "bold"))
+        self.canvas.create_text(292, 90, text="→", fill="#2F75B5", font=("Segoe UI", 18, "bold"))
+        self.canvas.create_text(304, 90, text="C", fill="#17365D", font=("Segoe UI", 15, "bold"))
+        self.canvas.create_text(270, 175, text="Mercado Pago a Colppy", fill="#FFFFFF", font=("Segoe UI", 21, "bold"))
+        self.canvas.create_text(270, 204, text="Preparando tu espacio de trabajo", fill="#BFD7EA", font=("Segoe UI", 10))
+        self.canvas.create_rectangle(65, 240, 475, 250, fill="#284A6B", outline="")
+        self.progress_fill = self.canvas.create_rectangle(65, 240, 65, 250, fill="#62B5E5", outline="")
+        self.message_item = self.canvas.create_text(65, 278, text="Iniciando...", anchor="w", fill="#E7F2FA", font=("Segoe UI", 9))
+        self.percent_item = self.canvas.create_text(475, 278, text="0%", anchor="e", fill="#FFFFFF", font=("Segoe UI", 9, "bold"))
+        self.dots = [
+            self.canvas.create_oval(252 + index * 14, 301, 258 + index * 14, 307, fill="#496B88", outline="")
+            for index in range(3)
+        ]
+        root.deiconify()
+        root.lift()
+        self._animate()
+        root.update()
+
+    def _animate(self) -> None:
+        colors = ("#62B5E5", "#8BC9EE", "#496B88")
+        for index, item in enumerate(self.dots):
+            self.canvas.itemconfigure(item, fill=colors[(index - self.animation_frame) % len(colors)])
+        self.animation_frame = (self.animation_frame + 1) % len(colors)
+        self.animation_job = self.root.after(140, self._animate)
 
     def update(self, value: int, message: str) -> None:
-        self.value.set(max(0, min(100, value)))
-        self.message.set(message)
-        self.frame.lift()
-        self.root.update_idletasks()
+        safe_value = max(0, min(100, value))
+        self.canvas.coords(self.progress_fill, 65, 240, 65 + int(410 * safe_value / 100), 250)
+        self.canvas.itemconfigure(self.message_item, text=message)
+        self.canvas.itemconfigure(self.percent_item, text=f"{safe_value}%")
+        self.root.update()
 
     def close(self) -> None:
-        self.frame.destroy()
+        remaining_ms = max(0, 750 - int((time.monotonic() - self.started_at) * 1000))
+        if remaining_ms:
+            finished = tk.BooleanVar(value=False)
+            self.root.after(remaining_ms, lambda: finished.set(True))
+            self.root.wait_variable(finished)
+        if self.animation_job is not None:
+            self.root.after_cancel(self.animation_job)
+        self.root.withdraw()
+        self.canvas.destroy()
+        self.root.overrideredirect(False)
+        setattr(self.root, "_startup_splash_active", False)
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        self.root.geometry(adaptive_window_geometry(screen_width, screen_height))
+        self.root.minsize(
+            min(900, max(720, screen_width - 80)),
+            min(600, max(560, screen_height - 110)),
+        )
+        self.root.deiconify()
+        self.root.lift()
 
 
 class MercadoPagoColppyApp:
@@ -125,6 +179,8 @@ class MercadoPagoColppyApp:
         self.selected_files: list[Path] = []
         self.current_result: AnalysisResult | None = None
         self.last_export_path: Path | None = None
+        self.analysis_blocked_reason: str | None = None
+        self._validated_selection_key: tuple[tuple[str, ...], str] | None = None
 
         self._configure_window()
         self._configure_style()
@@ -172,8 +228,11 @@ class MercadoPagoColppyApp:
 
     def _configure_window(self) -> None:
         self.root.title("Mercado Pago a Colppy")
-        self.root.geometry("1180x760")
-        self.root.minsize(980, 650)
+        if not bool(getattr(self.root, "_startup_splash_active", False)):
+            width = self.root.winfo_screenwidth()
+            height = self.root.winfo_screenheight()
+            self.root.geometry(adaptive_window_geometry(width, height))
+            self.root.minsize(min(900, max(720, width - 80)), min(600, max(560, height - 110)))
         self.root.configure(bg=self.COLORS["white"])
 
     def _configure_style(self) -> None:
@@ -184,7 +243,7 @@ class MercadoPagoColppyApp:
         style.configure("Header.TLabel", font=("Segoe UI", 18, "bold"), foreground=self.COLORS["white"], background=self.COLORS["navy"])
         style.configure("HeaderSub.TLabel", font=("Segoe UI", 10), foreground="#DCE8F2", background=self.COLORS["navy"])
         style.configure("Section.TLabel", font=("Segoe UI", 11, "bold"), foreground=self.COLORS["navy"])
-        style.configure("Kpi.TLabel", font=("Segoe UI", 17, "bold"), foreground=self.COLORS["navy"], background=self.COLORS["light"])
+        style.configure("Kpi.TLabel", font=("Segoe UI", 15, "bold"), foreground=self.COLORS["navy"], background=self.COLORS["light"])
         style.configure("KpiName.TLabel", font=("Segoe UI", 9), foreground=self.COLORS["muted"], background=self.COLORS["light"])
         style.configure("Primary.TButton", font=("Segoe UI", 10, "bold"), foreground=self.COLORS["white"], background=self.COLORS["blue"], padding=(14, 8))
         style.map("Primary.TButton", background=[("active", "#265F91"), ("disabled", "#AAB8C4")])
@@ -196,20 +255,20 @@ class MercadoPagoColppyApp:
         style.configure("TRadiobutton", font=("Segoe UI", 10), background=self.COLORS["white"])
 
     def _build_ui(self) -> None:
-        header = tk.Frame(self.root, bg=self.COLORS["navy"], height=86)
+        header = tk.Frame(self.root, bg=self.COLORS["navy"], height=72)
         header.pack(fill="x")
         header.pack_propagate(False)
-        ttk.Label(header, text="Mercado Pago a Colppy", style="Header.TLabel").pack(anchor="w", padx=24, pady=(15, 1))
-        ttk.Label(header, text="Seleccioná reportes, revisá los movimientos nuevos y exportá sin duplicados.", style="HeaderSub.TLabel").pack(anchor="w", padx=24)
+        ttk.Label(header, text="Mercado Pago a Colppy", style="Header.TLabel").pack(anchor="w", padx=18, pady=(10, 0))
+        ttk.Label(header, text="Seleccioná reportes, revisá los movimientos nuevos y exportá sin duplicados.", style="HeaderSub.TLabel").pack(anchor="w", padx=18)
 
-        body = ttk.Frame(self.root, padding=18)
+        body = ttk.Frame(self.root, padding=12)
         body.pack(fill="both", expand=True)
 
-        controls = ttk.Frame(body)
-        controls.pack(fill="x")
-        ttk.Label(controls, text="Empresa", style="Section.TLabel").pack(side="left", padx=(0, 8))
+        settings_row = ttk.Frame(body)
+        settings_row.pack(fill="x")
+        ttk.Label(settings_row, text="Empresa", style="Section.TLabel").pack(side="left", padx=(0, 8))
         self.company_combo = ttk.Combobox(
-            controls,
+            settings_row,
             textvariable=self.company_var,
             values=company_names(self.company_config),
             state="readonly",
@@ -217,29 +276,33 @@ class MercadoPagoColppyApp:
         )
         self.company_combo.pack(side="left")
         self.company_combo.bind("<<ComboboxSelected>>", self._on_company_selected)
-        ttk.Button(controls, text="Empresas...", style="Secondary.TButton", command=self._manage_companies).pack(side="left", padx=(6, 18))
-        ttk.Label(controls, text="Tipo de reporte", style="Section.TLabel").pack(side="left", padx=(0, 12))
-        ttk.Radiobutton(controls, text="Diario", variable=self.mode_var, value="Diario").pack(side="left")
-        ttk.Radiobutton(controls, text="Mensual", variable=self.mode_var, value="Mensual").pack(side="left", padx=(6, 18))
-        ttk.Button(controls, text="Seleccionar Excel", style="Primary.TButton", command=self._select_files).pack(side="left")
-        self.analyze_button = ttk.Button(controls, text="Analizar", style="Secondary.TButton", command=self._start_analysis, state="disabled")
+        ttk.Button(settings_row, text="Empresas...", style="Secondary.TButton", command=self._manage_companies).pack(side="left", padx=(6, 24))
+        ttk.Label(settings_row, text="Tipo de reporte", style="Section.TLabel").pack(side="left", padx=(0, 10))
+        ttk.Radiobutton(settings_row, text="Diario", variable=self.mode_var, value="Diario").pack(side="left")
+        ttk.Radiobutton(settings_row, text="Mensual", variable=self.mode_var, value="Mensual").pack(side="left", padx=(8, 0))
+        ttk.Button(settings_row, text="Abrir salidas", style="Secondary.TButton", command=self._open_outputs).pack(side="right")
+
+        file_actions = ttk.Frame(body)
+        file_actions.pack(fill="x", pady=(7, 0))
+        ttk.Button(file_actions, text="Seleccionar archivos", style="Primary.TButton", command=self._select_files).pack(side="left")
+        self.analyze_button = ttk.Button(file_actions, text="Analizar", style="Secondary.TButton", command=self._start_analysis, state="disabled")
         self.analyze_button.pack(side="left", padx=8)
-        ttk.Button(controls, text="Limpiar", style="Secondary.TButton", command=self._clear_selection).pack(side="left")
-        ttk.Button(controls, text="Abrir salidas", style="Secondary.TButton", command=self._open_outputs).pack(side="right")
+        ttk.Button(file_actions, text="Limpiar", style="Secondary.TButton", command=self._clear_selection).pack(side="left")
+        ttk.Label(file_actions, text="Formatos admitidos: CSV, XLS y XLSX", foreground=self.COLORS["muted"]).pack(side="right")
 
         file_frame = ttk.Frame(body)
-        file_frame.pack(fill="x", pady=(14, 10))
-        ttk.Label(file_frame, text="Archivos seleccionados", style="Section.TLabel").pack(anchor="w", pady=(0, 5))
-        self.file_list = tk.Listbox(file_frame, height=3, font=("Segoe UI", 9), relief="solid", borderwidth=1, highlightthickness=0, selectmode="extended")
+        file_frame.pack(fill="x", pady=(8, 6))
+        ttk.Label(file_frame, text="Archivos seleccionados", style="Section.TLabel").pack(anchor="w", pady=(0, 3))
+        self.file_list = tk.Listbox(file_frame, height=2, font=("Segoe UI", 9), relief="solid", borderwidth=1, highlightthickness=0, selectmode="extended")
         self.file_list.pack(fill="x")
 
         progress_frame = ttk.Frame(body)
-        progress_frame.pack(fill="x", pady=(0, 10))
+        progress_frame.pack(fill="x", pady=(0, 6))
         ttk.Progressbar(progress_frame, variable=self.analysis_progress_var, maximum=100).pack(side="left", fill="x", expand=True)
         ttk.Label(progress_frame, textvariable=self.analysis_progress_message_var, foreground=self.COLORS["muted"]).pack(side="left", padx=(10, 0))
 
         kpis = ttk.Frame(body)
-        kpis.pack(fill="x", pady=(0, 12))
+        kpis.pack(fill="x", pady=(0, 7))
         kpi_definitions = [
             ("Filas leídas", "rows"),
             ("Nuevos", "new"),
@@ -249,7 +312,7 @@ class MercadoPagoColppyApp:
             ("Neto nuevo", "net"),
         ]
         for index, (label, key) in enumerate(kpi_definitions):
-            card = tk.Frame(kpis, bg=self.COLORS["light"], highlightbackground=self.COLORS["border"], highlightthickness=1, padx=13, pady=8)
+            card = tk.Frame(kpis, bg=self.COLORS["light"], highlightbackground=self.COLORS["border"], highlightthickness=1, padx=9, pady=5)
             card.grid(row=0, column=index, sticky="nsew", padx=(0 if index == 0 else 5, 0))
             ttk.Label(card, textvariable=self.summary_vars[key], style="Kpi.TLabel").pack(anchor="w")
             ttk.Label(card, text=label, style="KpiName.TLabel").pack(anchor="w")
@@ -293,13 +356,13 @@ class MercadoPagoColppyApp:
         issue_scroll.pack(side="right", fill="y")
 
         actions = ttk.Frame(body)
-        actions.pack(fill="x", pady=(12, 0))
+        actions.pack(fill="x", pady=(7, 0))
         self.export_button = ttk.Button(actions, text="Exportar para Colppy", style="Primary.TButton", command=self._export, state="disabled")
         self.export_button.pack(side="left")
         self.confirm_button = ttk.Button(actions, text="Confirmar importación", style="Secondary.TButton", command=self._confirm_import, state="disabled")
         self.confirm_button.pack(side="left", padx=8)
         ttk.Button(actions, text="Respaldar historial", style="Secondary.TButton", command=self._backup_history).pack(side="left")
-        ttk.Label(actions, textvariable=self.status_var, foreground=self.COLORS["muted"]).pack(side="right")
+        ttk.Label(actions, textvariable=self.status_var, foreground=self.COLORS["muted"], wraplength=430).pack(side="right")
 
     def _refresh_company_selector(self) -> None:
         self.company_config = self.company_repository.load()
@@ -312,16 +375,76 @@ class MercadoPagoColppyApp:
         if company_id is None or company_id == self.company_config.selected_company_id:
             return
         try:
-            self.company_config = self.company_repository.select(company_id)
-            selected = require_selected_company(self.company_config)
-            self.company_paths = self.paths.for_company(selected.id)
-            self.history = HistoryRepository(self.company_paths.database, self.company_paths.backups)
-            self.service = ImportService(self.history)
-            self._clear_selection()
-            self.status_var.set(f"Empresa activa: {selected.name}")
+            self._activate_company(company_id, clear_selection=True)
         except Exception as exc:
             messagebox.showerror("No se pudo cambiar de empresa", str(exc), parent=self.root)
             self._refresh_company_selector()
+
+    def _activate_company(self, company_id: str, clear_selection: bool) -> None:
+        self.company_config = self.company_repository.select(company_id)
+        selected = require_selected_company(self.company_config)
+        self.company_paths = self.paths.for_company(selected.id)
+        self.history = HistoryRepository(self.company_paths.database, self.company_paths.backups)
+        self.service = ImportService(self.history)
+        self.company_var.set(selected.name)
+        self._validated_selection_key = None
+        if clear_selection:
+            self._clear_selection()
+        self.status_var.set(f"Empresa activa: {selected.name}")
+
+    def _confirm_company_for_files(self, files: list[Path]) -> bool:
+        active = require_selected_company(self.company_config)
+        key = (tuple(sorted(str(path.resolve()) for path in files)), active.id)
+        if self._validated_selection_key == key:
+            return True
+
+        detection = detect_company_from_paths(files, self.company_config.companies)
+        if detection.status == "mixed":
+            messagebox.showerror(
+                "Empresas mezcladas",
+                "Los archivos seleccionados parecen pertenecer a empresas diferentes.\n\n"
+                "Seleccioná solamente archivos de una empresa por vez.",
+                parent=self.root,
+            )
+            return False
+
+        if detection.company_id is not None:
+            detected = next(company for company in self.company_config.companies if company.id == detection.company_id)
+            if detected.id != active.id:
+                change = messagebox.askyesno(
+                    "Empresa detectada",
+                    f"Los archivos parecen corresponder a {detected.name}, pero está seleccionada {active.name}.\n\n"
+                    f"¿Querés cambiar a {detected.name} y continuar?",
+                    parent=self.root,
+                )
+                if not change:
+                    return False
+                self._activate_company(detected.id, clear_selection=False)
+                active = detected
+            if detection.status == "partial":
+                confirmed = messagebox.askyesno(
+                    "Confirmar empresa",
+                    f"Algunos nombres de archivo no indican la empresa.\n\n"
+                    f"¿Confirmás que todos corresponden a {active.name}?",
+                    parent=self.root,
+                )
+                if not confirmed:
+                    return False
+        else:
+            confirmed = messagebox.askyesno(
+                "No se pudo identificar la empresa",
+                f"El nombre del archivo no indica ninguna empresa configurada.\n\n"
+                f"¿Confirmás que corresponde a {active.name}?",
+                parent=self.root,
+            )
+            if not confirmed:
+                return False
+
+        self._validated_selection_key = (
+            tuple(sorted(str(path.resolve()) for path in files)),
+            require_selected_company(self.company_config).id,
+        )
+        return True
 
     def _manage_companies(self) -> None:
         window = tk.Toplevel(self.root)
@@ -389,14 +512,23 @@ class MercadoPagoColppyApp:
     def _select_files(self) -> None:
         selected = filedialog.askopenfilenames(
             title="Seleccionar reportes de Mercado Pago",
-            filetypes=[("Excel de Mercado Pago", "*.xlsx"), ("Todos los archivos", "*.*")],
+            filetypes=[
+                ("Reportes de Mercado Pago", "*.xlsx *.xls *.csv"),
+                ("Excel moderno", "*.xlsx"),
+                ("Excel 97-2003", "*.xls"),
+                ("CSV", "*.csv"),
+            ],
         )
         if not selected:
             return
+        candidate_files = list(self.selected_files)
         for name in selected:
             path = Path(name)
-            if path not in self.selected_files:
-                self.selected_files.append(path)
+            if path not in candidate_files:
+                candidate_files.append(path)
+        if not self._confirm_company_for_files(candidate_files):
+            return
+        self.selected_files = candidate_files
         self._refresh_file_list()
         self._start_analysis()
 
@@ -410,6 +542,8 @@ class MercadoPagoColppyApp:
         self.selected_files.clear()
         self.current_result = None
         self.last_export_path = None
+        self.analysis_blocked_reason = None
+        self._validated_selection_key = None
         self._refresh_file_list()
         self._clear_tables()
         for key, variable in self.summary_vars.items():
@@ -417,9 +551,13 @@ class MercadoPagoColppyApp:
         self.export_button.configure(state="disabled")
         self.confirm_button.configure(state="disabled")
         self.status_var.set("Seleccioná uno o varios reportes de Mercado Pago.")
+        self.analysis_progress_var.set(0)
+        self.analysis_progress_message_var.set("Listo para analizar")
 
     def _start_analysis(self) -> None:
         if not self.selected_files:
+            return
+        if not self._confirm_company_for_files(self.selected_files):
             return
         self.status_var.set("Analizando archivos...")
         self.analyze_button.configure(state="disabled")
@@ -458,6 +596,27 @@ class MercadoPagoColppyApp:
         self.issues.delete(*self.issues.get_children())
 
     def _show_analysis(self, result: AnalysisResult) -> None:
+        period = classify_period(item.date for item in result.unique_movements)
+        self.analysis_blocked_reason = period.error
+        if period.error:
+            result = replace(
+                result,
+                issues=[*result.issues, ParseIssue("Selección", 0, period.error)],
+            )
+            if result.unique_movements:
+                messagebox.showerror("Período no válido", period.error, parent=self.root)
+        elif period.mode is not None and period.mode != result.mode:
+            change = messagebox.askyesno(
+                "Tipo de reporte detectado",
+                f"Por las fechas, el archivo parece ser {period.mode}, pero elegiste {result.mode}.\n\n"
+                f"¿Querés cambiarlo a {period.mode}?\n"
+                f"Si elegís No, se mantendrá {result.mode} bajo tu confirmación.",
+                parent=self.root,
+            )
+            if change:
+                self.mode_var.set(period.mode)
+                result = replace(result, mode=period.mode)
+
         self.current_result = result
         self._set_analysis_progress(100, "Análisis completado")
         self._clear_tables()
@@ -480,44 +639,31 @@ class MercadoPagoColppyApp:
             self.issues.insert("", "end", values=(issue.source_file, issue.row_number, issue.message))
 
         self.analyze_button.configure(state="normal")
-        self.export_button.configure(state="normal" if result.new_movements else "disabled")
-        self.status_var.set(
-            f"Análisis listo: {len(result.new_movements)} movimientos nuevos."
-            if result.new_movements
-            else "No hay movimientos nuevos para importar."
-        )
+        can_export = bool(result.new_movements) and self.analysis_blocked_reason is None
+        self.export_button.configure(state="normal" if can_export else "disabled")
+        if self.analysis_blocked_reason:
+            self.status_var.set(f"Revisá el período: {self.analysis_blocked_reason}")
+        else:
+            self.status_var.set(
+                f"Análisis listo: {len(result.new_movements)} movimientos nuevos."
+                if result.new_movements
+                else "No hay movimientos nuevos para importar."
+            )
 
     def _export(self) -> None:
         result = self.current_result
         if result is None or not result.new_movements:
             messagebox.showinfo("Sin movimientos", "No hay movimientos nuevos para exportar.")
             return
-        start = min(item.date for item in result.new_movements)
-        end = max(item.date for item in result.new_movements)
-        default_name = suggested_filename(result.mode, start, end, ".csv")
-        output_name = filedialog.asksaveasfilename(
-            title="Guardar archivo para Colppy",
-            initialdir=self.company_paths.outputs,
-            initialfile=default_name,
-            defaultextension=".csv",
-            filetypes=[
-                ("CSV oficial de Colppy", "*.csv"),
-                ("Excel moderno", "*.xlsx"),
-                ("Excel 97-2003", "*.xls"),
-            ],
-        )
-        if not output_name:
+        if self.analysis_blocked_reason:
+            messagebox.showerror("Revisión pendiente", self.analysis_blocked_reason, parent=self.root)
             return
-        output = Path(output_name)
+        start = min(item.date for item in result.unique_movements)
+        end = max(item.date for item in result.unique_movements)
+        company = require_selected_company(self.company_config)
+        output = self.company_paths.outputs / output_filename(company.name, result.mode, start, end)
         try:
-            if output.suffix.lower() == ".csv":
-                export_colppy_csv(result.new_movements, output)
-            elif output.suffix.lower() == ".xls":
-                export_colppy_xls(result.new_movements, output)
-            else:
-                if output.suffix.lower() != ".xlsx":
-                    output = output.with_suffix(".xlsx")
-                export_colppy_xlsx(result.new_movements, output)
+            export_colppy_csv(result.new_movements, output)
         except Exception as exc:
             messagebox.showerror("No se pudo exportar", str(exc))
             return
@@ -574,6 +720,7 @@ class MercadoPagoColppyApp:
 
 def main() -> None:
     root = tk.Tk()
+    apply_window_icon(root)
     splash = StartupSplash(root)
     try:
         MercadoPagoColppyApp(root, startup_progress=splash.update)

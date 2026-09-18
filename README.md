@@ -7,13 +7,22 @@ Aplicación portable para convertir reportes de Mercado Pago al formato oficial 
 1. Abrí `MercadoPagoColppyLauncher.exe`.
 2. En el primer inicio, agregá localmente las empresas que vas a administrar.
 3. Elegí la empresa y seleccioná `Diario` o `Mensual`.
-4. Presioná **Seleccionar Excel** y elegí uno o varios reportes `.xlsx`.
+4. Presioná **Seleccionar archivos** y elegí uno o varios reportes `.csv`, `.xls` o `.xlsx`.
 5. Revisá los contadores, la vista previa y la pestaña de errores.
-6. Presioná **Exportar para Colppy**. La opción predeterminada genera el CSV oficial.
+6. Presioná **Exportar para Colppy**. La app genera automáticamente el CSV oficial dentro de la carpeta de salidas de esa empresa.
 7. Importá el archivo generado en Colppy.
 8. Cuando Colppy confirme correctamente la carga, volvé a la app y presioná **Confirmar importación**.
 
 La confirmación es importante: recién en ese momento el movimiento queda guardado en el historial y deja de aparecer en futuros reportes diarios o mensuales.
+
+La app compara los nombres de archivo con las empresas configuradas. Si detecta otra empresa, ofrece cambiarla; si el nombre no permite identificarla, pide confirmación. Nunca permite mezclar archivos de empresas diferentes. También revisa las fechas: un solo día se reconoce como diario, varios días del mismo mes como mensual y una selección que abarque meses distintos queda bloqueada para revisión.
+
+Los archivos exportados se nombran así:
+
+- Diario: `MP EMPRESA DIARIO DD-MM-AAAA.csv`
+- Mensual: `MP EMPRESA MENSUAL MM-AAAA.csv`
+
+El contenido usa exactamente la estructura del CSV de importación de Colppy: campos separados por punto y coma y decimales con coma.
 
 ## Carpetas portables
 
@@ -40,11 +49,11 @@ Con Python 3.12, 3.13 o 3.14 instalado, hacé doble clic en `CREAR_PORTABLE.bat`
 
 ### Opción 2: GitHub
 
-Cada actualización de `main` ejecuta las pruebas y genera el portable. Si todavía no existe el release correspondiente a `version.json`, el workflow crea automáticamente el tag (por ejemplo, `v1.0.0`) y publica el ZIP junto con su checksum SHA-256. También se puede ejecutar manualmente desde **Actions > Construir portable Windows > Run workflow**.
+Cada actualización de `main` ejecuta las pruebas y genera el portable. Si todavía no existe el release correspondiente a `version.json`, el workflow crea automáticamente el tag (por ejemplo, `v1.0.1`) y publica el ZIP junto con su checksum SHA-256. También se puede ejecutar manualmente desde **Actions > Construir portable Windows > Run workflow**.
 
 ## Actualizaciones
 
-El launcher consulta el último GitHub Release. Si encuentra una versión más nueva, avisa y permite abrir la página de descarga. Sin Internet, abre normalmente la versión instalada. Nunca sube la configuración ni los historiales locales.
+El launcher muestra una pantalla de inicio mientras consulta el último GitHub Release. Si encuentra una versión más nueva, avisa y permite abrir la página de descarga. Sin Internet, abre normalmente la versión instalada. Nunca sube la configuración, los reportes ni los historiales locales.
 
 Al actualizar, reemplazá únicamente los ejecutables y `version.json`; conservá siempre las carpetas `datos`, `salidas` y `respaldos`.
 

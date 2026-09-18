@@ -11,7 +11,7 @@ Convertir la aplicación portable existente en una aplicación distribuible desd
 - Cada computadora conservará su propia configuración y sus propios historiales. No habrá sincronización entre computadoras.
 - Los nombres de empresas se cargarán localmente la primera vez que se use la aplicación.
 - El launcher solamente avisará que existe una versión nueva y ofrecerá abrir la página del Release. No instalará actualizaciones sin intervención del usuario.
-- Los nombres de los archivos de Mercado Pago no determinarán la empresa, el período ni el modo. El usuario seleccionará la empresa y el modo antes de procesarlos.
+- La app intentará reconocer la empresa por el nombre del archivo y el período por las fechas. Los casos desconocidos o distintos de la selección requieren confirmación; mezclar empresas o meses queda bloqueado.
 
 ## Datos locales y privacidad
 
@@ -39,7 +39,7 @@ En el primer inicio, la aplicación mostrará un diálogo para crear al menos un
 
 Al cambiar de empresa se limpiará la selección de reportes, la vista previa y el estado de exportación. Cada análisis consultará únicamente el historial SQLite de la empresa seleccionada. La aplicación no intentará deducir la empresa desde el nombre del archivo.
 
-La eliminación de una empresa no formará parte de esta versión, para impedir pérdidas accidentales. Se permitirá agregar y renombrar empresas.
+La eliminación de una empresa no formará parte de esta versión, para impedir pérdidas accidentales. Se permitirá agregar y renombrar empresas. Los nombres permanecen únicamente en la computadora del usuario.
 
 ## Formato Colppy
 
@@ -57,11 +57,11 @@ El CSV entregado por el usuario define el contrato principal de exportación:
 - Fecha: día/mes/año sin ceros obligatorios.
 - Importe: dos decimales, coma decimal, sin separador de miles y signo negativo para débitos.
 
-La exportación CSV será la opción predeterminada. Las exportaciones XLSX y XLS existentes permanecerán disponibles como alternativas. Las pruebas usarán datos sintéticos; el CSV real recibido no se copiará al repositorio.
+La exportación será únicamente CSV oficial. Los formatos CSV, XLS y XLSX se aceptarán como entrada de Mercado Pago. Las pruebas usarán datos sintéticos; los archivos reales recibidos no se copiarán al repositorio.
 
 ## Progreso y experiencia de uso
 
-La aplicación tendrá una pantalla de inicio compacta con el nombre del producto, mensaje de etapa y barra de 0 a 100 %. El progreso representará etapas reales: resolución de carpetas, lectura de configuración, preparación de historiales, creación de interfaz y finalización. No se agregará una demora artificial.
+La aplicación tendrá una pantalla de inicio compacta con el nombre del producto, animación, mensaje de etapa y barra de 0 a 100 %. El progreso representará etapas reales: resolución de carpetas, lectura de configuración, preparación de historiales, creación de interfaz y finalización.
 
 Durante el análisis de Excel, la ventana principal mostrará una barra determinada de 0 a 100 %. El lector informará progreso por archivo y por filas cuando el tamaño de la hoja esté disponible. La interfaz seguirá procesando en un hilo de trabajo y las actualizaciones visuales se enviarán al hilo de Tkinter.
 

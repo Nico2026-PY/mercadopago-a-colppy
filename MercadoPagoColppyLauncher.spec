@@ -4,7 +4,7 @@ a = Analysis(
     ["launcher.py"],
     pathex=["."],
     binaries=[],
-    datas=[],
+    datas=[("assets/app-icon.png", "assets")],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -34,4 +34,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=["assets/app-icon.ico"],
 )

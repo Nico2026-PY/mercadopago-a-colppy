@@ -6,7 +6,7 @@ Crear una aplicación de escritorio portable para Windows que transforme uno o v
 
 ## Usuario y entorno
 
-- Usuario principal: administración de Corralón Pitty.
+- Usuario principal: administración de una empresa con varias cuentas locales.
 - Sistema objetivo: Windows 10/11 de 64 bits.
 - Uso: desde una carpeta copiable, sin instalación, Node ni permisos administrativos.
 - Ubicación recomendada: Escritorio, Documentos o una carpeta de trabajo con permiso de escritura.
@@ -84,4 +84,3 @@ Ventana única, clara y apta para uso administrativo:
 - Prueba integral con los cinco reportes reales de febrero a junio de 2026.
 - Verificación de que los 13 ID repetidos por devolución/reclamo no se eliminen indebidamente.
 - Importación del proyecto, compilación de bytecode y ejecución de pruebas sin interfaz gráfica.
-

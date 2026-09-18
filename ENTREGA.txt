@@ -4,14 +4,20 @@ La aplicacion no instala servicios ni necesita Node.
 
 Uso seguro:
 1. Abrir MercadoPagoColppyLauncher.exe.
-2. Elegir la empresa local y los reportes de Mercado Pago.
-3. Revisar y exportar el CSV oficial.
+2. Elegir la empresa local y seleccionar reportes CSV, XLS o XLSX de Mercado Pago.
+3. Confirmar la empresa y el periodo detectados, revisar y exportar el CSV oficial.
 4. Importar el archivo en Colppy.
 5. Confirmar en la app solamente si Colppy termino correctamente.
 
 Cada empresa tiene su propio historial en datos\empresas\.
 Los respaldos se guardan por empresa en respaldos\.
 Las salidas se guardan por empresa en salidas\.
+
+Nombres de salida automaticos:
+- MP EMPRESA DIARIO DD-MM-AAAA.csv
+- MP EMPRESA MENSUAL MM-AAAA.csv
+
+No mezclar empresas ni meses diferentes en una misma seleccion. La aplicacion lo valida antes de exportar.
 
 Las actualizaciones se anuncian desde GitHub Releases. La aplicacion nunca sube archivos locales ni datos de movimientos.
 

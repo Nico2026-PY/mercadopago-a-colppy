@@ -4,13 +4,14 @@ from PyInstaller.utils.hooks import collect_all
 
 openpyxl_data, openpyxl_binaries, openpyxl_hidden = collect_all("openpyxl")
 xlwt_data, xlwt_binaries, xlwt_hidden = collect_all("xlwt")
+xlrd_data, xlrd_binaries, xlrd_hidden = collect_all("xlrd")
 
 a = Analysis(
     ["main.py"],
     pathex=["."],
-    binaries=openpyxl_binaries + xlwt_binaries,
-    datas=openpyxl_data + xlwt_data,
-    hiddenimports=openpyxl_hidden + xlwt_hidden,
+    binaries=openpyxl_binaries + xlwt_binaries + xlrd_binaries,
+    datas=openpyxl_data + xlwt_data + xlrd_data + [("assets/app-icon.png", "assets")],
+    hiddenimports=openpyxl_hidden + xlwt_hidden + xlrd_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -39,5 +40,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=["assets/app-icon.ico"],
 )
-

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import Callable, Iterable, Sequence
 
@@ -33,6 +34,96 @@ def _has_required_columns(headers: Sequence[str]) -> bool:
     return all(any(alias in header_set for alias in ALIASES[field]) for field in REQUIRED_FIELDS)
 
 
+def _read_csv_rows(path: Path) -> tuple[list[str], list[list[str]]]:
+    raw = path.read_bytes()
+    text: str | None = None
+    for encoding in ("utf-8-sig", "cp1252"):
+        try:
+            text = raw.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        raise ValueError("El CSV no usa una codificación compatible")
+    try:
+        dialect = csv.Sniffer().sniff(text[:8192], delimiters=";,\t")
+        reader = csv.reader(StringIO(text), dialect)
+        rows = list(reader)
+    except csv.Error as exc:
+        raise ValueError(f"No se pudo reconocer el separador del CSV: {exc}") from exc
+    if not rows:
+        return [], []
+    return rows[0], rows[1:]
+
+
+def _read_xls_rows(path: Path) -> tuple[list[object], list[list[object]]]:
+    try:
+        import xlrd
+    except ImportError as exc:
+        raise RuntimeError("Falta la dependencia xlrd para leer archivos .xls") from exc
+    workbook = xlrd.open_workbook(filename=str(path), on_demand=True)
+    try:
+        if workbook.nsheets == 0:
+            return [], []
+        sheet = workbook.sheet_by_index(0)
+        if sheet.nrows == 0:
+            return [], []
+        headers = list(sheet.row_values(0))
+        rows: list[list[object]] = []
+        for row_index in range(1, sheet.nrows):
+            values: list[object] = []
+            for cell in sheet.row(row_index):
+                value = cell.value
+                if cell.ctype == xlrd.XL_CELL_DATE:
+                    value = xlrd.xldate_as_datetime(value, workbook.datemode)
+                values.append(value)
+            rows.append(values)
+        return headers, rows
+    finally:
+        workbook.release_resources()
+
+
+def _consume_rows(
+    path: Path,
+    raw_headers: Sequence[object],
+    rows: Iterable[Sequence[object]],
+    estimated_rows: int,
+    movements: list[Movement],
+    issues: list[ParseIssue],
+    total_rows: int,
+    file_start: int,
+    file_end: int,
+    report: ProgressCallback,
+) -> int:
+    headers = ["" if value is None else str(value).strip() for value in raw_headers]
+    if not _has_required_columns(headers):
+        issues.append(
+            ParseIssue(
+                path.name,
+                1,
+                "Faltan columnas obligatorias de Mercado Pago: ID, tipo, fecha o importe neto",
+            )
+        )
+        report(file_end, f"Archivo revisado: {path.name}")
+        return total_rows
+
+    for row_number, values in enumerate(rows, start=2):
+        if all(value is None or (isinstance(value, str) and not value.strip()) for value in values):
+            continue
+        total_rows += 1
+        row = dict(zip(headers, values))
+        try:
+            movements.append(normalize_row(row, path.name, row_number))
+        except ValueError as exc:
+            issues.append(ParseIssue(path.name, row_number, str(exc)))
+        processed_rows = row_number - 1
+        if processed_rows == 1 or processed_rows % 250 == 0 or processed_rows >= estimated_rows:
+            fraction = min(1.0, processed_rows / max(1, estimated_rows))
+            value = file_start + int((file_end - file_start) * fraction)
+            report(value, f"Leyendo {path.name}: {processed_rows} filas")
+    return total_rows
+
+
 def read_mercadopago_files(
     paths: Iterable[str | Path],
     progress: ProgressCallback | None = None,
@@ -56,6 +147,31 @@ def read_mercadopago_files(
         file_start = int(file_index * 100 / file_count)
         file_end = int((file_index + 1) * 100 / file_count)
         report(file_start, f"Abriendo {path.name}...")
+        if path.suffix.lower() in {".csv", ".xls"}:
+            try:
+                if path.suffix.lower() == ".csv":
+                    raw_headers, tabular_rows = _read_csv_rows(path)
+                else:
+                    raw_headers, tabular_rows = _read_xls_rows(path)
+                if not raw_headers:
+                    issues.append(ParseIssue(path.name, 0, "El archivo está vacío"))
+                else:
+                    total_rows = _consume_rows(
+                        path,
+                        raw_headers,
+                        tabular_rows,
+                        max(1, len(tabular_rows)),
+                        movements,
+                        issues,
+                        total_rows,
+                        file_start,
+                        file_end,
+                        report,
+                    )
+            except Exception as exc:
+                issues.append(ParseIssue(path.name, 0, f"No se pudo abrir el archivo: {exc}"))
+            report(file_end, f"Archivo revisado: {path.name}")
+            continue
         try:
             workbook = load_workbook(path, read_only=True, data_only=True)
         except Exception as exc:
@@ -71,33 +187,19 @@ def read_mercadopago_files(
             except StopIteration:
                 issues.append(ParseIssue(path.name, 0, "El archivo está vacío"))
                 continue
-            headers = ["" if value is None else str(value).strip() for value in raw_headers]
-            if not _has_required_columns(headers):
-                issues.append(
-                    ParseIssue(
-                        path.name,
-                        1,
-                        "Faltan columnas obligatorias de Mercado Pago: ID, tipo, fecha o importe neto",
-                    )
-                )
-                report(file_end, f"Archivo revisado: {path.name}")
-                continue
-
             estimated_rows = max(1, int(sheet.max_row or 1) - 1)
-            for row_number, values in enumerate(rows, start=2):
-                if all(value is None or (isinstance(value, str) and not value.strip()) for value in values):
-                    continue
-                total_rows += 1
-                row = dict(zip(headers, values))
-                try:
-                    movements.append(normalize_row(row, path.name, row_number))
-                except ValueError as exc:
-                    issues.append(ParseIssue(path.name, row_number, str(exc)))
-                processed_rows = row_number - 1
-                if processed_rows == 1 or processed_rows % 250 == 0 or processed_rows >= estimated_rows:
-                    fraction = min(1.0, processed_rows / estimated_rows)
-                    value = file_start + int((file_end - file_start) * fraction)
-                    report(value, f"Leyendo {path.name}: {processed_rows} filas")
+            total_rows = _consume_rows(
+                path,
+                raw_headers,
+                rows,
+                estimated_rows,
+                movements,
+                issues,
+                total_rows,
+                file_start,
+                file_end,
+                report,
+            )
         finally:
             workbook.close()
         report(file_end, f"Archivo revisado: {path.name}")

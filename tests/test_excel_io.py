@@ -2,6 +2,9 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 import importlib.util
+import csv
+from datetime import datetime
+from decimal import Decimal
 
 from openpyxl import Workbook, load_workbook
 
@@ -21,6 +24,118 @@ HEADERS = [
 
 
 class ExcelReadTests(unittest.TestCase):
+    def test_reads_excel_date_cell_from_legacy_xls_report(self):
+        import xlwt
+
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "reporte-con-fecha.xls"
+            workbook = xlwt.Workbook()
+            sheet = workbook.add_sheet("Reporte")
+            for column, header in enumerate(HEADERS):
+                sheet.write(0, column, header)
+            date_style = xlwt.easyxf(num_format_str="DD/MM/YYYY HH:MM:SS")
+            values = [
+                303,
+                "Pago aprobado",
+                datetime(2026, 9, 3, 12, 45),
+                975.25,
+                "Cliente de prueba",
+                "QR",
+                "Local de prueba",
+            ]
+            for column, value in enumerate(values):
+                style = date_style if column == 2 else xlwt.Style.default_style
+                sheet.write(1, column, value, style)
+            workbook.save(str(path))
+
+            result = read_mercadopago_files([path])
+
+        self.assertEqual(result.total_rows, 1)
+        self.assertEqual(result.issues, [])
+        self.assertEqual(result.movements[0].date.isoformat(), "2026-09-03")
+
+    def test_reads_legacy_xls_report(self):
+        import xlwt
+
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "reporte.xls"
+            workbook = xlwt.Workbook()
+            sheet = workbook.add_sheet("Reporte")
+            for column, header in enumerate(HEADERS):
+                sheet.write(0, column, header)
+            values = [
+                202,
+                "Pago aprobado",
+                "2026-09-02T11:30:00-03:00",
+                2500.75,
+                "Cliente de prueba",
+                "QR",
+                "Local de prueba",
+            ]
+            for column, value in enumerate(values):
+                sheet.write(1, column, value)
+            workbook.save(str(path))
+
+            result = read_mercadopago_files([path])
+
+        self.assertEqual(result.total_rows, 1)
+        self.assertEqual(len(result.issues), 0)
+        self.assertEqual(result.movements[0].amount, Decimal("2500.75"))
+        self.assertEqual(result.movements[0].receipt, "202")
+
+    def test_reads_semicolon_csv_with_decimal_comma(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "reporte.csv"
+            content = (
+                ";".join(HEADERS)
+                + "\r\n"
+                + ";".join(
+                    [
+                        "101",
+                        "Pago aprobado",
+                        "2026-09-01T10:00:00-03:00",
+                        "1234,50",
+                        "Cliente de prueba",
+                        "QR",
+                        "Local de prueba",
+                    ]
+                )
+                + "\r\n"
+            )
+            path.write_bytes(content.encode("cp1252"))
+
+            result = read_mercadopago_files([path])
+
+        self.assertEqual(result.total_rows, 1)
+        self.assertEqual(len(result.issues), 0)
+        self.assertEqual(result.movements[0].amount, Decimal("1234.50"))
+        self.assertEqual(result.movements[0].receipt, "101")
+
+    def test_reads_comma_delimited_csv(self):
+        with TemporaryDirectory() as temp:
+            path = Path(temp) / "reporte-comas.csv"
+            with path.open("w", encoding="utf-8-sig", newline="") as stream:
+                writer = csv.writer(stream, delimiter=",")
+                writer.writerow(HEADERS)
+                writer.writerow(
+                    [
+                        "102",
+                        "Pago aprobado",
+                        "2026-09-02T10:00:00-03:00",
+                        "987.65",
+                        "Cliente, con coma",
+                        "QR",
+                        "Local de prueba",
+                    ]
+                )
+
+            result = read_mercadopago_files([path])
+
+        self.assertEqual(result.total_rows, 1)
+        self.assertEqual(result.issues, [])
+        self.assertEqual(result.movements[0].amount, Decimal("987.65"))
+        self.assertIn("Cliente, con coma", result.movements[0].concept)
+
     def test_reads_valid_rows_and_collects_invalid_rows(self):
         with TemporaryDirectory() as temp:
             path = Path(temp) / "mp.xlsx"
