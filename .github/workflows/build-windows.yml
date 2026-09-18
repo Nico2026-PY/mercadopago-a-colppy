@@ -1,0 +1,88 @@
+name: Construir portable Windows
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Descargar proyecto
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+
+      - name: Instalar dependencias
+        run: python -m pip install -r requirements.txt
+
+      - name: Ejecutar pruebas
+        run: python -m unittest discover -s tests -v
+
+      - name: Verificar version del tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: powershell
+        run: |
+          $manifest = (Get-Content version.json | ConvertFrom-Json).version
+          if ("v$manifest" -ne "${{ github.ref_name }}") {
+            throw "El tag ${{ github.ref_name }} no coincide con version.json v$manifest"
+          }
+
+      - name: Construir aplicacion
+        run: python -m PyInstaller --noconfirm --clean MercadoPagoColppy.spec
+
+      - name: Construir launcher
+        run: python -m PyInstaller --noconfirm --clean MercadoPagoColppyLauncher.spec
+
+      - name: Crear ZIP portable
+        shell: powershell
+        run: ./scripts/package_portable.ps1
+
+      - name: Publicar portable
+        uses: actions/upload-artifact@v4
+        with:
+          name: MercadoPagoColppy-Windows
+          path: release/MercadoPagoColppy-Windows.zip
+          if-no-files-found: error
+
+      - name: Crear GitHub Release
+        if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $version = (Get-Content version.json | ConvertFrom-Json).version
+          $tag = "v$version"
+
+          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "El release $tag ya existe; no se modifica."
+            exit 0
+          }
+
+          git rev-parse --verify "refs/tags/$tag" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a $tag -m "Mercado Pago a Colppy $tag"
+            if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el tag $tag" }
+            git push origin $tag
+            if ($LASTEXITCODE -ne 0) { throw "No se pudo publicar el tag $tag" }
+          }
+
+          gh release create $tag `
+            release/MercadoPagoColppy-Windows.zip `
+            release/SHA256SUMS.txt `
+            --verify-tag `
+            --generate-notes `
+            --title "Mercado Pago a Colppy $tag"
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo crear el release $tag" }
