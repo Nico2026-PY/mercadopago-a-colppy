@@ -63,14 +63,16 @@ jobs:
           $version = (Get-Content version.json | ConvertFrom-Json).version
           $tag = "v$version"
 
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
+          $releases = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar los releases existentes" }
+          if ($releases.tagName -contains $tag) {
             Write-Host "El release $tag ya existe; no se modifica."
             exit 0
           }
 
-          git rev-parse --verify "refs/tags/$tag" 2>$null
-          if ($LASTEXITCODE -ne 0) {
+          $remoteTag = git ls-remote --tags origin "refs/tags/$tag"
+          if ($LASTEXITCODE -ne 0) { throw "No se pudo consultar el tag $tag" }
+          if (-not $remoteTag) {
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git tag -a $tag -m "Mercado Pago a Colppy $tag"

@@ -30,9 +30,11 @@ class ReleaseContractTests(unittest.TestCase):
             "MercadoPagoColppy.spec",
             "MercadoPagoColppyLauncher.spec",
             "git push origin $tag",
+            "gh release list",
             "gh release",
         ):
             self.assertIn(required_text, workflow)
+        self.assertNotIn("gh release view", workflow)
 
     def test_packaging_script_uses_an_explicit_release_allowlist(self):
         script = (PROJECT_ROOT / "scripts" / "package_portable.ps1").read_text(encoding="utf-8")
