@@ -162,7 +162,7 @@ class InstallationTests(unittest.TestCase):
 
             manifest = json.loads((root / "current.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["version"], "v1.1.0")
-            self.assertEqual(executable, root / "versions" / "v1.1.0" / "MercadoPagoColppy.exe")
+            self.assertEqual(executable, (root / "versions" / "v1.1.0" / "MercadoPagoColppy.exe").resolve())
             self.assertEqual(history.read_text(encoding="utf-8"), "keep")
 
     def test_failed_install_keeps_current_manifest(self):
