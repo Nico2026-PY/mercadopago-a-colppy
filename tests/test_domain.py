@@ -29,7 +29,7 @@ class DomainTests(unittest.TestCase):
 
         self.assertEqual(movement.date, date(2026, 5, 26))
         self.assertEqual(movement.amount, Decimal("190000.00"))
-        self.assertEqual(movement.receipt, "160321104999")
+        self.assertEqual(movement.receipt, "MP-160321104999")
         self.assertEqual(
             movement.concept,
             "Local de prueba - Cliente de prueba - CUIT - 20123456789",
@@ -50,7 +50,7 @@ class DomainTests(unittest.TestCase):
         )
 
         self.assertNotEqual(payment.key, refund.key)
-        self.assertEqual(refund.receipt, "160321104999-DEV")
+        self.assertEqual(refund.receipt, "MP-160321104999-DEV")
         self.assertEqual(refund.amount, Decimal("-190000.00"))
         self.assertEqual(
             refund.concept,
@@ -112,7 +112,7 @@ class DomainTests(unittest.TestCase):
             2,
         )
 
-        self.assertEqual(movement.receipt, "ABC-9-PAYOUT")
+        self.assertEqual(movement.receipt, "MP-ABC-9-PAYOUT")
         self.assertEqual(movement.date, date(2026, 6, 1))
         self.assertEqual(movement.amount, Decimal("-5100.00"))
         self.assertEqual(movement.concept, "PAYOUTS")

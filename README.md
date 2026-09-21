@@ -26,6 +26,8 @@ El contenido usa exactamente la estructura del CSV de importación de Colppy: ca
 
 El importe se toma de **VALOR DE LA COMPRA** (campo técnico `TRANSACTION_AMOUNT`), que es el valor original usado para conciliar. El concepto se arma solamente con tipo de operación, sucursal, pagador y CUIT/CUIL. El texto `Pago aprobado` se omite para evitar ruido; los demás tipos, como devoluciones, `PAYOUTS` y reclamos, sí se conservan.
 
+El número de comprobante se exporta con el prefijo `MP-` (por ejemplo, `MP-1741820375080`) para que Excel y Colppy lo mantengan como texto completo y no lo conviertan a notación científica.
+
 ## Datos locales
 
 - `%LOCALAPPDATA%\MercadoPagoColppy\datos\config.json`: empresas configuradas solamente en esa PC.
@@ -53,7 +55,7 @@ Con Python 3.12, 3.13 o 3.14 instalado, hacé doble clic en `CREAR_PORTABLE.bat`
 
 ### Opción 2: GitHub
 
-Cada actualización de `main` ejecuta las pruebas y genera el release. Si todavía no existe el release correspondiente a `version.json`, el workflow crea automáticamente el tag (por ejemplo, `v1.0.2`) y publica `Launcher.exe`, el paquete interno y su checksum SHA-256. También se puede ejecutar manualmente desde **Actions > Construir portable Windows > Run workflow**.
+Cada actualización de `main` ejecuta las pruebas y genera el release. Si todavía no existe el release correspondiente a `version.json`, el workflow crea automáticamente el tag (por ejemplo, `v1.0.3`) y publica `Launcher.exe`, el paquete interno y su checksum SHA-256. También se puede ejecutar manualmente desde **Actions > Construir portable Windows > Run workflow**.
 
 ## Actualizaciones
 

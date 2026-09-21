@@ -134,7 +134,7 @@ def _receipt(source_id: str, transaction_type: str) -> str:
         "Reclamo": "-REC",
         "PAYOUTS": "-PAYOUT",
     }.get(transaction_type, "")
-    return f"{source_id}{suffix}"
+    return f"MP-{source_id}{suffix}"
 
 
 def normalize_row(row: Mapping[str, Any], source_file: str | Path, row_number: int = 2) -> Movement:

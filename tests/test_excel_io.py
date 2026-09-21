@@ -81,7 +81,7 @@ class ExcelReadTests(unittest.TestCase):
         self.assertEqual(result.total_rows, 1)
         self.assertEqual(len(result.issues), 0)
         self.assertEqual(result.movements[0].amount, Decimal("2500.75"))
-        self.assertEqual(result.movements[0].receipt, "202")
+        self.assertEqual(result.movements[0].receipt, "MP-202")
 
     def test_reads_semicolon_csv_with_decimal_comma(self):
         with TemporaryDirectory() as temp:
@@ -109,7 +109,7 @@ class ExcelReadTests(unittest.TestCase):
         self.assertEqual(result.total_rows, 1)
         self.assertEqual(len(result.issues), 0)
         self.assertEqual(result.movements[0].amount, Decimal("1234.50"))
-        self.assertEqual(result.movements[0].receipt, "101")
+        self.assertEqual(result.movements[0].receipt, "MP-101")
 
     def test_reads_comma_delimited_csv(self):
         with TemporaryDirectory() as temp:
@@ -151,7 +151,7 @@ class ExcelReadTests(unittest.TestCase):
         self.assertEqual(result.total_rows, 2)
         self.assertEqual(len(result.movements), 1)
         self.assertEqual(len(result.issues), 1)
-        self.assertEqual(result.movements[0].receipt, "101")
+        self.assertEqual(result.movements[0].receipt, "MP-101")
         self.assertIn("ID de operación", result.issues[0].message)
 
     def test_rejects_workbook_without_required_columns(self):
@@ -188,7 +188,7 @@ class ExcelExportTests(unittest.TestCase):
             "Campo obligatorio;;"
             "Campo obligatorio                                               Numérico 2 (dos) decimales con valor negativo para los débitos\r\n"
             "Fecha;Concepto;Nro. Comprobante;Importe\r\n"
-            "1/9/2026;Cliente de prueba;17;1234,50\r\n"
+            "1/9/2026;Cliente de prueba;MP-17;1234,50\r\n"
         ).encode("cp1252")
 
         with TemporaryDirectory() as temp:
@@ -229,9 +229,9 @@ class ExcelExportTests(unittest.TestCase):
 
             self.assertEqual(sheet["A1"].value, "Campo obligatorio                                               Formato dd-mm-aaaa")
             self.assertEqual([sheet.cell(2, col).value for col in range(1, 5)], ["Fecha", "Concepto", "Nro. Comprobante", "Importe"])
-            self.assertEqual(sheet["C3"].value, "1")
+            self.assertEqual(sheet["C3"].value, "MP-1")
             self.assertEqual(sheet["D3"].value, 1000.25)
-            self.assertEqual(sheet["C4"].value, "2-PAYOUT")
+            self.assertEqual(sheet["C4"].value, "MP-2-PAYOUT")
             self.assertEqual(sheet["D4"].value, -500)
             self.assertEqual(sheet["A3"].number_format, "dd-mm-yyyy")
             workbook.close()

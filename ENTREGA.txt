@@ -17,6 +17,7 @@ Estos datos quedan en %LOCALAPPDATA%\MercadoPagoColppy y no se reemplazan al act
 
 El importe sale de VALOR DE LA COMPRA (TRANSACTION_AMOUNT).
 El concepto usa tipo de operacion, sucursal, pagador y CUIT/CUIL. Se omite solamente "Pago aprobado"; devoluciones, PAYOUTS, reclamos y otros tipos se conservan.
+El numero de comprobante lleva el prefijo MP- para que Excel y Colppy lo mantengan como texto completo.
 
 Nombres de salida automaticos:
 - MP EMPRESA DIARIO DD-MM-AAAA.csv
