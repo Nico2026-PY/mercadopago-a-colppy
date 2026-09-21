@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
 import sys
@@ -41,8 +42,11 @@ def resolve_app_paths(
     frozen: bool | None = None,
     source_root: str | Path | None = None,
 ) -> AppPaths:
+    explicit_home = os.environ.get("MP_COLPPY_HOME", "").strip()
     is_frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
-    if is_frozen:
+    if explicit_home:
+        root = Path(explicit_home).resolve()
+    elif is_frozen:
         executable_path = Path(executable or sys.executable).resolve()
         root = executable_path.parent
     else:

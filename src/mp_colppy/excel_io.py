@@ -101,7 +101,7 @@ def _consume_rows(
             ParseIssue(
                 path.name,
                 1,
-                "Faltan columnas obligatorias de Mercado Pago: ID, tipo, fecha o importe neto",
+                "Faltan columnas obligatorias de Mercado Pago: ID, tipo, fecha o valor de la compra",
             )
         )
         report(file_end, f"Archivo revisado: {path.name}")

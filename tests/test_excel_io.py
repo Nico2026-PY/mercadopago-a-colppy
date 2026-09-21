@@ -16,7 +16,7 @@ HEADERS = [
     "ID DE OPERACIÓN EN MERCADO PAGO",
     "TIPO DE OPERACIÓN",
     "FECHA DE ORIGEN",
-    "MONTO NETO DE LA OPERACIÓN QUE IMPACTÓ TU DINERO",
+    "VALOR DE LA COMPRA",
     "PAGADOR",
     "MEDIO DE PAGO",
     "NOMBRE DE LOCAL",
@@ -177,7 +177,7 @@ class ExcelExportTests(unittest.TestCase):
                 "SOURCE_ID": 17,
                 "TRANSACTION_TYPE": "Pago aprobado",
                 "TRANSACTION_DATE": "2026-09-01T10:00:00-03:00",
-                "SETTLEMENT_NET_AMOUNT": "1234.50",
+                "TRANSACTION_AMOUNT": "1234.50",
                 "PAYER_NAME": "Cliente de prueba",
             },
             "origen.xlsx",
@@ -188,7 +188,7 @@ class ExcelExportTests(unittest.TestCase):
             "Campo obligatorio;;"
             "Campo obligatorio                                               Numérico 2 (dos) decimales con valor negativo para los débitos\r\n"
             "Fecha;Concepto;Nro. Comprobante;Importe\r\n"
-            "1/9/2026;Pago aprobado - Cliente de prueba;17;1234,50\r\n"
+            "1/9/2026;Cliente de prueba;17;1234,50\r\n"
         ).encode("cp1252")
 
         with TemporaryDirectory() as temp:
@@ -203,7 +203,7 @@ class ExcelExportTests(unittest.TestCase):
                 "SOURCE_ID": 2,
                 "TRANSACTION_TYPE": "PAYOUTS",
                 "TRANSACTION_DATE": "2026-09-02T10:00:00-03:00",
-                "SETTLEMENT_NET_AMOUNT": -500,
+                "TRANSACTION_AMOUNT": -500,
                 "PAYMENT_METHOD": "Transferencia",
             },
             "dos.xlsx",
@@ -214,7 +214,7 @@ class ExcelExportTests(unittest.TestCase):
                 "SOURCE_ID": 1,
                 "TRANSACTION_TYPE": "Pago aprobado",
                 "TRANSACTION_DATE": "2026-09-01T10:00:00-03:00",
-                "SETTLEMENT_NET_AMOUNT": 1000.25,
+                "TRANSACTION_AMOUNT": 1000.25,
                 "PAYER_NAME": "Ana",
             },
             "uno.xlsx",
@@ -242,7 +242,7 @@ class ExcelExportTests(unittest.TestCase):
                 "SOURCE_ID": 1,
                 "TRANSACTION_TYPE": "Pago aprobado",
                 "TRANSACTION_DATE": "2026-09-01",
-                "SETTLEMENT_NET_AMOUNT": 10,
+                "TRANSACTION_AMOUNT": 10,
             },
             "uno.xlsx",
             2,

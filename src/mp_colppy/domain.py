@@ -11,17 +11,25 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "source_id": ("ID DE OPERACIÓN EN MERCADO PAGO", "SOURCE_ID"),
     "transaction_type": ("TIPO DE OPERACIÓN", "TRANSACTION_TYPE"),
     "transaction_date": ("FECHA DE ORIGEN", "TRANSACTION_DATE", "TRANSACTION_DATE_SHORT"),
-    "net_amount": (
-        "MONTO NETO DE LA OPERACIÓN QUE IMPACTÓ TU DINERO",
-        "SETTLEMENT_NET_AMOUNT",
-    ),
+    "gross_amount": ("VALOR DE LA COMPRA", "TRANSACTION_AMOUNT"),
     "payer_name": ("PAGADOR", "PAYER_NAME"),
+    "payer_id_type": (
+        "TIPO DE IDENTIFICACIÓN DEL PAGADOR",
+        "PAYER_ID_TYPE",
+        "PAYER_IDENTIFICATION_TYPE",
+    ),
+    "payer_id_number": (
+        "NÚMERO DE IDENTIFICACIÓN DEL PAGADOR",
+        "PAYER_ID",
+        "PAYER_ID_NUMBER",
+        "PAYER_IDENTIFICATION_NUMBER",
+    ),
     "bank_name": ("BANCO DE ORIGEN", "POI_BANK_NAME"),
     "payment_method": ("MEDIO DE PAGO", "PAYMENT_METHOD"),
     "store_name": ("NOMBRE DE LOCAL", "STORE_NAME"),
 }
 
-REQUIRED_FIELDS = ("source_id", "transaction_type", "transaction_date", "net_amount")
+REQUIRED_FIELDS = ("source_id", "transaction_type", "transaction_date", "gross_amount")
 KNOWN_TRANSACTION_TYPES = {
     "Pago aprobado",
     "PAYOUTS",
@@ -80,7 +88,7 @@ def _identifier(value: Any) -> str:
 
 def _decimal(value: Any) -> Decimal:
     if _blank(value):
-        raise ValueError("Falta importe neto")
+        raise ValueError("Falta valor de la compra")
     if isinstance(value, str):
         cleaned = value.strip().replace("$", "").replace(" ", "")
         if "," in cleaned and "." in cleaned:
@@ -92,7 +100,7 @@ def _decimal(value: Any) -> Decimal:
     try:
         return Decimal(cleaned).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     except (InvalidOperation, ValueError) as exc:
-        raise ValueError(f"Importe neto inválido: {value}") from exc
+        raise ValueError(f"Valor de la compra inválido: {value}") from exc
 
 
 def _date_and_timestamp(value: Any) -> tuple[date, str]:
@@ -137,17 +145,27 @@ def normalize_row(row: Mapping[str, Any], source_file: str | Path, row_number: i
     if transaction_type not in KNOWN_TRANSACTION_TYPES:
         raise ValueError(f"Tipo de operación no reconocido: {transaction_type}")
     movement_date, occurred_at = _date_and_timestamp(value_for(row, "transaction_date"))
-    amount = _decimal(value_for(row, "net_amount"))
+    amount = _decimal(value_for(row, "gross_amount"))
     if amount == 0:
-        raise ValueError("El importe neto es cero")
+        raise ValueError("El valor de la compra es cero")
 
-    concept_parts = [
-        transaction_type,
-        _text(value_for(row, "payer_name")),
-        _text(value_for(row, "bank_name")),
-        _text(value_for(row, "payment_method")),
-        _text(value_for(row, "store_name")),
-    ]
+    payer_id_number = _text(value_for(row, "payer_id_number"))
+    concept_parts = []
+    if transaction_type != "Pago aprobado":
+        concept_parts.append(transaction_type)
+    concept_parts.extend(
+        (
+            _text(value_for(row, "store_name")),
+            _text(value_for(row, "payer_name")),
+        )
+    )
+    if payer_id_number:
+        concept_parts.extend(
+            (
+                _text(value_for(row, "payer_id_type")),
+                payer_id_number,
+            )
+        )
     concept: list[str] = []
     for part in concept_parts:
         if part and part not in concept:
@@ -169,4 +187,3 @@ def normalize_row(row: Mapping[str, Any], source_file: str | Path, row_number: i
         row_number=row_number,
         raw=dict(row),
     )
-

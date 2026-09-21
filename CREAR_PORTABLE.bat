@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ========================================
-echo Mercado Pago a Colppy - Crear portable
+echo Mercado Pago a Colppy - Crear release
 echo ========================================
 
 set "PYTHON_LAUNCHER="
@@ -54,12 +54,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\package_portable.ps1
 if errorlevel 1 goto :error
 
 echo.
-echo Portable creado en release\MercadoPagoColppy-Windows.zip
+echo Release creado:
+echo   release\Launcher.exe
+echo   release\MercadoPagoColppy-Windows.zip
+echo   release\SHA256SUMS.txt
 pause
 exit /b 0
 
 :error
 echo.
-echo No se pudo crear el portable. Revisa el mensaje anterior.
+echo No se pudo crear el release. Revisa el mensaje anterior.
 pause
 exit /b 1

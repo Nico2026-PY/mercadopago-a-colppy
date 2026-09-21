@@ -1,162 +1,169 @@
 from __future__ import annotations
 
-import json
+import logging
+import os
 from pathlib import Path
-from queue import Empty, Queue
-import subprocess
 import sys
+import tempfile
 import threading
 import tkinter as tk
-from tkinter import messagebox
-import webbrowser
+from tkinter import messagebox, ttk
 
-from src.mp_colppy.updater import LATEST_RELEASE_API, fetch_latest_release, is_newer
-
-
-def application_directory() -> Path:
-    if bool(getattr(sys, "frozen", False)):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent
-
-
-def runtime_asset_path(filename: str) -> Path:
-    bundle_root = getattr(sys, "_MEIPASS", None)
-    if bundle_root is not None:
-        return Path(bundle_root) / "assets" / filename
-    return Path(__file__).resolve().parent / "assets" / filename
+from src.mp_colppy.updater import (
+    UpdateClient,
+    UpdateError,
+    current_version,
+    install_release,
+    launch_current,
+    parse_checksum,
+)
 
 
-def apply_window_icon(root: tk.Tk) -> None:
-    icon_path = runtime_asset_path("app-icon.png")
-    if not icon_path.is_file():
-        return
-    try:
-        icon = tk.PhotoImage(file=str(icon_path))
-        root.iconphoto(True, icon)
-        setattr(root, "_app_icon", icon)
-    except tk.TclError:
-        return
+def bundled_path(filename: str) -> Path:
+    root = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    return root / filename
 
 
-class LauncherSplash:
+def local_app_root() -> Path:
+    base = os.environ.get("LOCALAPPDATA", "").strip()
+    if not base:
+        base = str(Path.home() / "AppData" / "Local")
+    return Path(base) / "MercadoPagoColppy"
+
+
+class LauncherApp:
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.frame = 0
-        self.job: str | None = None
-        root.withdraw()
-        root.overrideredirect(True)
-        width, height = 470, 250
-        x = max(0, (root.winfo_screenwidth() - width) // 2)
-        y = max(0, (root.winfo_screenheight() - height) // 2)
-        root.geometry(f"{width}x{height}+{x}+{y}")
-        self.canvas = tk.Canvas(root, width=width, height=height, bg="#102A49", highlightthickness=0)
-        self.canvas.pack(fill="both", expand=True)
-        self.canvas.create_rectangle(0, 0, width, 6, fill="#3B82C4", outline="")
-        self.canvas.create_oval(190, 28, 280, 118, fill="#EAF4FC", outline="#6FB1E2", width=2)
-        self.canvas.create_text(218, 73, text="MP", fill="#17365D", font=("Segoe UI", 13, "bold"))
-        self.canvas.create_text(251, 73, text="→", fill="#2F75B5", font=("Segoe UI", 16, "bold"))
-        self.canvas.create_text(266, 73, text="C", fill="#17365D", font=("Segoe UI", 13, "bold"))
-        self.canvas.create_text(235, 149, text="Mercado Pago a Colppy", fill="#FFFFFF", font=("Segoe UI", 18, "bold"))
-        self.message = self.canvas.create_text(
-            235,
-            181,
-            text="Buscando actualizaciones seguras...",
-            fill="#BFD7EA",
-            font=("Segoe UI", 9),
+        self.app_root = local_app_root()
+        self.app_root.mkdir(parents=True, exist_ok=True)
+        self.temp_root = self.app_root / "temp"
+        self.temp_root.mkdir(exist_ok=True)
+        logging.basicConfig(
+            filename=self.app_root / "launcher.log",
+            level=logging.INFO,
+            format="%(asctime)s %(levelname)s %(message)s",
+            encoding="utf-8",
         )
-        self.canvas.create_rectangle(55, 211, 415, 219, fill="#284A6B", outline="")
-        self.bar = self.canvas.create_rectangle(55, 211, 145, 219, fill="#62B5E5", outline="")
-        root.deiconify()
-        root.lift()
-        self._animate()
+        self.status = tk.StringVar(value="Preparando el launcher…")
+        self._configure_window()
+        self._build_ui()
+        threading.Thread(target=self._run, daemon=True).start()
 
-    def _animate(self) -> None:
-        track_width = 360
-        segment_width = 90
-        position = (self.frame * 9) % (track_width + segment_width) - segment_width
-        left = 55 + max(0, position)
-        right = 55 + min(track_width, position + segment_width)
-        self.canvas.coords(self.bar, left, 211, max(left, right), 219)
-        self.frame += 1
-        self.job = self.root.after(45, self._animate)
+    def _configure_window(self) -> None:
+        self.root.title("Mercado Pago a Colppy")
+        self.root.geometry("480x250")
+        self.root.resizable(False, False)
+        self.root.configure(bg="#17365D")
+        icon = bundled_path("assets/app-icon.ico")
+        if os.name == "nt" and icon.exists():
+            try:
+                self.root.iconbitmap(str(icon))
+            except tk.TclError:
+                pass
 
-    def set_message(self, message: str) -> None:
-        self.canvas.itemconfigure(self.message, text=message)
+    def _build_ui(self) -> None:
+        panel = tk.Frame(self.root, bg="#17365D", padx=36, pady=28)
+        panel.pack(fill="both", expand=True)
+        tk.Label(
+            panel,
+            text="Mercado Pago a Colppy",
+            bg="#17365D",
+            fg="white",
+            font=("Segoe UI", 18, "bold"),
+        ).pack(pady=(8, 8))
+        tk.Label(
+            panel,
+            textvariable=self.status,
+            bg="#17365D",
+            fg="#DCE8F2",
+            font=("Segoe UI", 10),
+            wraplength=390,
+        ).pack(pady=(0, 18))
+        self.progress = ttk.Progressbar(panel, mode="indeterminate", length=350)
+        self.progress.pack()
+        self.progress.start(12)
 
-    def close(self) -> None:
-        if self.job is not None:
-            self.root.after_cancel(self.job)
-        self.root.withdraw()
-        self.canvas.destroy()
-        self.root.overrideredirect(False)
+    def _set_status(self, message: str) -> None:
+        self.root.after(0, self.status.set, message)
 
+    def _ask_update(self, version: str) -> bool:
+        result: list[bool] = []
+        ready = threading.Event()
 
-def read_installed_version(base: Path) -> str:
-    payload = json.loads((base / "version.json").read_text(encoding="utf-8"))
-    version = payload.get("version")
-    if not isinstance(version, str):
-        raise ValueError("version.json no contiene una versión válida")
-    return version
+        def ask() -> None:
+            result.append(
+                messagebox.askyesno(
+                    "Actualización disponible",
+                    f"Está disponible la versión {version}.\n\n¿Querés instalarla ahora?",
+                    parent=self.root,
+                )
+            )
+            ready.set()
 
+        self.root.after(0, ask)
+        ready.wait()
+        return result[0]
 
-def start_application(base: Path) -> None:
-    if bool(getattr(sys, "frozen", False)):
-        command = [str(base / "MercadoPagoColppy.exe")]
-    else:
-        command = [sys.executable, str(base / "main.py")]
-    if not Path(command[-1]).exists():
-        raise FileNotFoundError(f"No se encontró la aplicación: {command[-1]}")
-    subprocess.Popen(command, cwd=base)
+    def _launch_installed(self) -> None:
+        try:
+            launch_current(self.app_root)
+        except UpdateError:
+            logging.exception("No se pudo abrir la aplicación instalada")
+            raise
+        self._set_status("Abriendo la aplicación…")
+        self.root.after(500, self.root.destroy)
+
+    def _run(self) -> None:
+        try:
+            installed = current_version(self.app_root)
+            self._set_status("Buscando actualizaciones…")
+            client = UpdateClient()
+            try:
+                release = client.latest_release()
+            except Exception:
+                logging.exception("No se pudo comprobar la actualización")
+                if installed is None:
+                    raise
+                self._set_status("Sin conexión. Abriendo la versión instalada…")
+                self._launch_installed()
+                return
+
+            if installed is not None and release.version <= installed:
+                self._launch_installed()
+                return
+            if installed is not None and not self._ask_update(str(release.version)):
+                self._launch_installed()
+                return
+
+            self._set_status(f"Descargando {release.version}…")
+            with tempfile.TemporaryDirectory(prefix="update-", dir=self.temp_root) as temporary:
+                archive = Path(temporary) / client.archive_name
+                client.download(release.archive_url, archive)
+                checksum = parse_checksum(client.download_text(release.checksum_url), client.archive_name)
+                self._set_status("Verificando e instalando…")
+                install_release(archive, release.version, checksum, self.app_root)
+            logging.info("Versión %s instalada", release.version)
+            self._launch_installed()
+        except Exception as exc:
+            logging.exception("El launcher no pudo continuar")
+            error_detail = str(exc)
+
+            def show_error() -> None:
+                self.progress.stop()
+                self.status.set("No se pudo instalar la aplicación.")
+                messagebox.showerror(
+                    "No se pudo abrir",
+                    "No hay una versión instalada y no se pudo descargar.\n\n"
+                    f"Detalle: {error_detail}\n\nRevisá tu conexión e intentá nuevamente.",
+                    parent=self.root,
+                )
+
+            self.root.after(0, show_error)
 
 
 def main() -> None:
     root = tk.Tk()
-    apply_window_icon(root)
-    splash = LauncherSplash(root)
-    base = application_directory()
-    try:
-        installed = read_installed_version(base)
-    except Exception:
-        installed = "0.0.0"
-    releases: Queue[object] = Queue(maxsize=1)
-
-    def check_update() -> None:
-        releases.put(fetch_latest_release(LATEST_RELEASE_API))
-
-    def finish_startup() -> None:
-        try:
-            release = releases.get_nowait()
-        except Empty:
-            root.after(80, finish_startup)
-            return
-
-        splash.set_message("Abriendo la aplicación...")
-        root.update_idletasks()
-        splash.close()
-        if release is not None:
-            try:
-                update_available = is_newer(installed, release.version)  # type: ignore[attr-defined]
-            except (ValueError, AttributeError):
-                update_available = False
-            if update_available:
-                open_download = messagebox.askyesno(
-                    "Actualización disponible",
-                    f"Tenés instalada la versión {installed} y está disponible la {release.version}.\n\n"  # type: ignore[attr-defined]
-                    "¿Querés abrir la página de descarga?\n\n"
-                    "Si elegís No, se abrirá la versión instalada.",
-                    parent=root,
-                )
-                if open_download:
-                    webbrowser.open(release.html_url)  # type: ignore[attr-defined]
-        try:
-            start_application(base)
-        except Exception as exc:
-            messagebox.showerror("No se pudo abrir", str(exc), parent=root)
-        finally:
-            root.destroy()
-
-    threading.Thread(target=check_update, daemon=True).start()
-    root.after(80, finish_startup)
+    LauncherApp(root)
     root.mainloop()
 
 

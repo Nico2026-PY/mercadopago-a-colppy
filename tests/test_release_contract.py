@@ -29,6 +29,9 @@ class ReleaseContractTests(unittest.TestCase):
             'python-version: "3.14"',
             "MercadoPagoColppy.spec",
             "MercadoPagoColppyLauncher.spec",
+            "release/Launcher.exe",
+            "release/MercadoPagoColppy-Windows.zip",
+            "release/SHA256SUMS.txt",
             "git push origin $tag",
             "gh release list",
             "gh release",
@@ -51,10 +54,13 @@ class ReleaseContractTests(unittest.TestCase):
         for filename in (
             "MercadoPagoColppy.exe",
             "MercadoPagoColppyLauncher.exe",
+            "Launcher.exe",
             "version.json",
-            "LEEME.txt",
         ):
             self.assertIn(filename, script)
+        self.assertIn('$AllowedFiles = @(\n    "MercadoPagoColppy.exe",\n    "version.json"\n)', script)
+        self.assertNotIn('"MercadoPagoColppyLauncher.exe",\n    "version.json"', script)
+        self.assertNotIn("LEEME.txt", script)
         for forbidden in ("datos", "salidas", "respaldos"):
             self.assertNotIn(f'New-Item -ItemType Directory -Force -Path (Join-Path $PortableRoot "{forbidden}")', script)
 

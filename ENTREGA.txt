@@ -3,7 +3,7 @@ MERCADO PAGO A COLPPY
 La aplicacion no instala servicios ni necesita Node.
 
 Uso seguro:
-1. Abrir MercadoPagoColppyLauncher.exe.
+1. Descargar y abrir Launcher.exe. El primer inicio descarga, verifica e instala la aplicacion.
 2. Elegir la empresa local y seleccionar reportes CSV, XLS o XLSX de Mercado Pago.
 3. Confirmar la empresa y el periodo detectados, revisar y exportar el CSV oficial.
 4. Importar el archivo en Colppy.
@@ -13,12 +13,17 @@ Cada empresa tiene su propio historial en datos\empresas\.
 Los respaldos se guardan por empresa en respaldos\.
 Las salidas se guardan por empresa en salidas\.
 
+Estos datos quedan en %LOCALAPPDATA%\MercadoPagoColppy y no se reemplazan al actualizar.
+
+El importe sale de VALOR DE LA COMPRA (TRANSACTION_AMOUNT).
+El concepto usa tipo de operacion, sucursal, pagador y CUIT/CUIL. Se omite solamente "Pago aprobado"; devoluciones, PAYOUTS, reclamos y otros tipos se conservan.
+
 Nombres de salida automaticos:
 - MP EMPRESA DIARIO DD-MM-AAAA.csv
 - MP EMPRESA MENSUAL MM-AAAA.csv
 
 No mezclar empresas ni meses diferentes en una misma seleccion. La aplicacion lo valida antes de exportar.
 
-Las actualizaciones se anuncian desde GitHub Releases. La aplicacion nunca sube archivos locales ni datos de movimientos.
+Las actualizaciones se descargan e instalan desde GitHub Releases. La aplicacion nunca sube archivos locales ni datos de movimientos.
 
 Para crear el EXE en Windows con Python 3.12, 3.13 o 3.14, ejecutar CREAR_PORTABLE.bat o usar el workflow de GitHub Actions incluido.

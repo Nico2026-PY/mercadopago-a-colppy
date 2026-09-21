@@ -43,15 +43,18 @@ jobs:
       - name: Construir launcher
         run: python -m PyInstaller --noconfirm --clean MercadoPagoColppyLauncher.spec
 
-      - name: Crear ZIP portable
+      - name: Crear instalador y paquete de actualizacion
         shell: powershell
         run: ./scripts/package_portable.ps1
 
-      - name: Publicar portable
+      - name: Publicar artefactos
         uses: actions/upload-artifact@v4
         with:
           name: MercadoPagoColppy-Windows
-          path: release/MercadoPagoColppy-Windows.zip
+          path: |
+            release/Launcher.exe
+            release/MercadoPagoColppy-Windows.zip
+            release/SHA256SUMS.txt
           if-no-files-found: error
 
       - name: Crear GitHub Release
@@ -82,6 +85,7 @@ jobs:
           }
 
           gh release create $tag `
+            release/Launcher.exe `
             release/MercadoPagoColppy-Windows.zip `
             release/SHA256SUMS.txt `
             --verify-tag `
