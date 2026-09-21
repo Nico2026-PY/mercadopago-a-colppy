@@ -24,6 +24,7 @@ Nombres de salida automaticos:
 - MP EMPRESA MENSUAL MM-AAAA.csv
 
 No mezclar empresas ni meses diferentes en una misma seleccion. La aplicacion lo valida antes de exportar.
+Excepcion: un Reclamo de un mes anterior incluido por Mercado Pago en el cierre mensual conserva su fecha original, se muestra como advertencia y se exporta dentro del cierre del mes principal.
 
 Las actualizaciones se descargan e instalan desde GitHub Releases. La aplicacion nunca sube archivos locales ni datos de movimientos.
 

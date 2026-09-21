@@ -17,7 +17,12 @@ from .domain import ParseIssue
 from .excel_io import export_colppy_csv
 from .history import HistoryRepository
 from .paths import AppPaths, resolve_app_paths
-from .report_validation import classify_period, detect_company_from_paths, output_filename
+from .report_validation import (
+    PeriodClassification,
+    classify_movement_period,
+    detect_company_from_paths,
+    output_filename,
+)
 from .service import AnalysisResult, ImportService
 
 
@@ -180,6 +185,7 @@ class MercadoPagoColppyApp:
         self.current_result: AnalysisResult | None = None
         self.last_export_path: Path | None = None
         self.analysis_blocked_reason: str | None = None
+        self.analysis_period: PeriodClassification | None = None
         self._validated_selection_key: tuple[tuple[str, ...], str] | None = None
 
         self._configure_window()
@@ -543,6 +549,7 @@ class MercadoPagoColppyApp:
         self.current_result = None
         self.last_export_path = None
         self.analysis_blocked_reason = None
+        self.analysis_period = None
         self._validated_selection_key = None
         self._refresh_file_list()
         self._clear_tables()
@@ -564,6 +571,7 @@ class MercadoPagoColppyApp:
         self.export_button.configure(state="disabled")
         self.confirm_button.configure(state="disabled")
         self.last_export_path = None
+        self.analysis_period = None
         self.analysis_progress_var.set(0)
         self.analysis_progress_message_var.set("Preparando análisis...")
         files = list(self.selected_files)
@@ -596,7 +604,8 @@ class MercadoPagoColppyApp:
         self.issues.delete(*self.issues.get_children())
 
     def _show_analysis(self, result: AnalysisResult) -> None:
-        period = classify_period(item.date for item in result.unique_movements)
+        period = classify_movement_period(result.unique_movements, result.mode)
+        self.analysis_period = period
         self.analysis_blocked_reason = period.error
         if period.error:
             result = replace(
@@ -605,6 +614,12 @@ class MercadoPagoColppyApp:
             )
             if result.unique_movements:
                 messagebox.showerror("Período no válido", period.error, parent=self.root)
+        elif period.warning:
+            result = replace(
+                result,
+                issues=[*result.issues, ParseIssue("Selección", 0, period.warning)],
+            )
+            messagebox.showwarning("Reclamo de otro mes", period.warning, parent=self.root)
         elif period.mode is not None and period.mode != result.mode:
             change = messagebox.askyesno(
                 "Tipo de reporte detectado",
@@ -643,6 +658,10 @@ class MercadoPagoColppyApp:
         self.export_button.configure(state="normal" if can_export else "disabled")
         if self.analysis_blocked_reason:
             self.status_var.set(f"Revisá el período: {self.analysis_blocked_reason}")
+        elif period.warning:
+            self.status_var.set(
+                f"Análisis listo con advertencia: {len(result.new_movements)} movimientos nuevos."
+            )
         else:
             self.status_var.set(
                 f"Análisis listo: {len(result.new_movements)} movimientos nuevos."
@@ -658,8 +677,12 @@ class MercadoPagoColppyApp:
         if self.analysis_blocked_reason:
             messagebox.showerror("Revisión pendiente", self.analysis_blocked_reason, parent=self.root)
             return
-        start = min(item.date for item in result.unique_movements)
-        end = max(item.date for item in result.unique_movements)
+        period = self.analysis_period
+        if period is None or period.start is None or period.end is None:
+            messagebox.showerror("Período no disponible", "Volvé a analizar los archivos antes de exportar.")
+            return
+        start = period.start
+        end = period.end
         company = require_selected_company(self.company_config)
         output = self.company_paths.outputs / output_filename(company.name, result.mode, start, end)
         try:

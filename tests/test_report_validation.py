@@ -1,9 +1,15 @@
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 
 from src.mp_colppy.companies import Company
-from src.mp_colppy.report_validation import classify_period, detect_company_from_paths, output_filename
+from src.mp_colppy.report_validation import (
+    classify_movement_period,
+    classify_period,
+    detect_company_from_paths,
+    output_filename,
+)
 
 
 class CompanyDetectionTests(unittest.TestCase):
@@ -55,6 +61,46 @@ class PeriodClassificationTests(unittest.TestCase):
 
         self.assertIsNone(result.mode)
         self.assertIn("más de un mes", result.error or "")
+
+    def test_monthly_report_allows_claim_from_previous_month_as_warning(self):
+        movements = [
+            SimpleNamespace(date=date(2026, 5, 29), transaction_type="Reclamo"),
+            SimpleNamespace(date=date(2026, 6, 1), transaction_type="Pago aprobado"),
+            SimpleNamespace(date=date(2026, 6, 30), transaction_type="PAYOUTS"),
+        ]
+
+        result = classify_movement_period(movements, "Mensual")
+
+        self.assertEqual(result.mode, "Mensual")
+        self.assertEqual(result.start, date(2026, 6, 1))
+        self.assertEqual(result.end, date(2026, 6, 30))
+        self.assertIsNone(result.error)
+        self.assertIn("Reclamo", result.warning or "")
+        self.assertIn("29/05/2026", result.warning or "")
+
+    def test_monthly_report_still_blocks_non_claim_from_previous_month(self):
+        movements = [
+            SimpleNamespace(date=date(2026, 5, 29), transaction_type="Pago aprobado"),
+            SimpleNamespace(date=date(2026, 6, 1), transaction_type="Pago aprobado"),
+        ]
+
+        result = classify_movement_period(movements, "Mensual")
+
+        self.assertIsNone(result.mode)
+        self.assertIn("más de un mes", result.error or "")
+        self.assertIsNone(result.warning)
+
+    def test_monthly_report_does_not_treat_future_claim_as_previous_claim(self):
+        movements = [
+            SimpleNamespace(date=date(2026, 6, 1), transaction_type="Pago aprobado"),
+            SimpleNamespace(date=date(2026, 7, 2), transaction_type="Reclamo"),
+        ]
+
+        result = classify_movement_period(movements, "Mensual")
+
+        self.assertIsNone(result.mode)
+        self.assertIn("más de un mes", result.error or "")
+        self.assertIsNone(result.warning)
 
 
 class OutputFilenameTests(unittest.TestCase):

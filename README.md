@@ -15,7 +15,7 @@ Aplicación portable para convertir reportes de Mercado Pago al formato oficial 
 
 La confirmación es importante: recién en ese momento el movimiento queda guardado en el historial y deja de aparecer en futuros reportes diarios o mensuales.
 
-La app compara los nombres de archivo con las empresas configuradas. Si detecta otra empresa, ofrece cambiarla; si el nombre no permite identificarla, pide confirmación. Nunca permite mezclar archivos de empresas diferentes. También revisa las fechas: un solo día se reconoce como diario, varios días del mismo mes como mensual y una selección que abarque meses distintos queda bloqueada para revisión.
+La app compara los nombres de archivo con las empresas configuradas. Si detecta otra empresa, ofrece cambiarla; si el nombre no permite identificarla, pide confirmación. Nunca permite mezclar archivos de empresas diferentes. También revisa las fechas: un solo día se reconoce como diario, varios días del mismo mes como mensual y una selección que abarque meses distintos queda bloqueada para revisión. La excepción son los movimientos `Reclamo` incluidos por Mercado Pago en un cierre mensual posterior: conservan su fecha de origen, aparecen como advertencia y no bloquean la exportación del mes principal.
 
 Los archivos exportados se nombran así:
 
@@ -55,7 +55,7 @@ Con Python 3.12, 3.13 o 3.14 instalado, hacé doble clic en `CREAR_PORTABLE.bat`
 
 ### Opción 2: GitHub
 
-Cada actualización de `main` ejecuta las pruebas y genera el release. Si todavía no existe el release correspondiente a `version.json`, el workflow crea automáticamente el tag (por ejemplo, `v1.0.3`) y publica `Launcher.exe`, el paquete interno y su checksum SHA-256. También se puede ejecutar manualmente desde **Actions > Construir portable Windows > Run workflow**.
+Cada actualización de `main` ejecuta las pruebas y genera el release. Si todavía no existe el release correspondiente a `version.json`, el workflow crea automáticamente el tag (por ejemplo, `v1.0.4`) y publica `Launcher.exe`, el paquete interno y su checksum SHA-256. También se puede ejecutar manualmente desde **Actions > Construir portable Windows > Run workflow**.
 
 ## Actualizaciones
 

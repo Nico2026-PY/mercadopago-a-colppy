@@ -5,7 +5,7 @@ from datetime import date
 from pathlib import Path
 import re
 import unicodedata
-from typing import Iterable, Sequence
+from typing import Iterable, Protocol, Sequence
 
 from .companies import Company
 
@@ -23,6 +23,12 @@ class PeriodClassification:
     start: date | None
     end: date | None
     error: str | None = None
+    warning: str | None = None
+
+
+class DatedMovement(Protocol):
+    date: date
+    transaction_type: str
 
 
 def _searchable(value: str) -> str:
@@ -72,6 +78,49 @@ def classify_period(values: Iterable[date]) -> PeriodClassification:
         return PeriodClassification(None, start, end, "El archivo contiene movimientos de más de un mes")
     mode = "Diario" if len(unique_dates) == 1 else "Mensual"
     return PeriodClassification(mode, start, end)
+
+
+def classify_movement_period(
+    movements: Iterable[DatedMovement],
+    selected_mode: str,
+) -> PeriodClassification:
+    items = list(movements)
+    ordinary = classify_period(item.date for item in items)
+    if ordinary.error is None or selected_mode != "Mensual":
+        return ordinary
+
+    regular_items = [item for item in items if item.transaction_type != "Reclamo"]
+    if not regular_items:
+        return ordinary
+
+    regular_months = {(item.date.year, item.date.month) for item in regular_items}
+    if len(regular_months) != 1:
+        return ordinary
+
+    main_month = next(iter(regular_months))
+    out_of_month = [
+        item for item in items if (item.date.year, item.date.month) != main_month
+    ]
+    if not out_of_month or any(
+        item.transaction_type != "Reclamo"
+        or (item.date.year, item.date.month) >= main_month
+        for item in out_of_month
+    ):
+        return ordinary
+
+    main_dates = sorted(
+        item.date for item in items if (item.date.year, item.date.month) == main_month
+    )
+    claim_dates = ", ".join(
+        sorted({item.date.strftime("%d/%m/%Y") for item in out_of_month})
+    )
+    count = len(out_of_month)
+    warning = (
+        f"Se incluirá {count} Reclamo de otro mes con su fecha de origen ({claim_dates})."
+        if count == 1
+        else f"Se incluirán {count} Reclamos de otros meses con sus fechas de origen ({claim_dates})."
+    )
+    return PeriodClassification("Mensual", main_dates[0], main_dates[-1], warning=warning)
 
 
 def output_filename(company_name: str, mode: str, start: date, end: date) -> str:
